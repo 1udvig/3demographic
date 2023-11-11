@@ -4,6 +4,12 @@ import * as THREE from "three";
 
 const ThreeScene = () => {
   const mountRef = useRef(null);
+  const mouse = new THREE.Vector2(2, 2);
+  function onMouseMove(event) {
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    // console.log(`Mouse coordinates: X=${mouse.x}, Y=${mouse.y}`);
+  }
 
   useEffect(() => {
     // Set up scene, camera, and renderer
@@ -25,6 +31,9 @@ const ThreeScene = () => {
         map: new THREE.TextureLoader().load("/earthcartoon.jpeg"),
       })
     );
+    const raycaster = new THREE.Raycaster();
+
+    document.addEventListener("mousemove", onMouseMove, false);
 
     scene.add(sphere);
 
@@ -34,8 +43,24 @@ const ThreeScene = () => {
     const animate = function () {
       requestAnimationFrame(animate);
 
-      scene.rotation.x += 0.001;
-      scene.rotation.y += 0.001;
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObject(sphere);
+
+      if (intersects.length > 0) {
+        const distanceToIntersection = intersects[0].distance;
+        const distanceToSphere = camera.position.distanceTo(sphere.position);
+
+        if (
+          distanceToIntersection <=
+          distanceToSphere + sphere.geometry.boundingSphere.radius
+        ) {
+          console.log("Hovering over sphere");
+        }
+      } else {
+        scene.rotation.x += 0.0005;
+        scene.rotation.y += 0.0005;
+      }
 
       renderer.render(scene, camera);
     };
@@ -44,6 +69,7 @@ const ThreeScene = () => {
 
     // Clean up
     return () => {
+      document.removeEventListener("mousemove", onMouseMove);
       mountRef.current.removeChild(renderer.domElement);
     };
   }, []);
