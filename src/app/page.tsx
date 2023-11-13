@@ -36,8 +36,22 @@ const ThreeScene = () => {
 
       // Update sphere rotation
       if (sphereRef.current) {
-        sphereRef.current.rotation.y += deltaX * rotationSpeed;
-        sphereRef.current.rotation.x += deltaY * rotationSpeed;
+        const deltaRotationQuaternion = new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(
+            deltaY * rotationSpeed,
+            deltaX * rotationSpeed,
+            0,
+            "XYZ" // Rotation order
+          )
+        );
+
+        sphereRef.current.quaternion.multiplyQuaternions(
+          deltaRotationQuaternion,
+          sphereRef.current.quaternion
+        );
+
+        // sphereRef.current.rotation.y += deltaX * rotationSpeed;
+        // sphereRef.current.rotation.x += deltaY * rotationSpeed;
       }
 
       lastMousePosition.current = {
@@ -46,6 +60,40 @@ const ThreeScene = () => {
       };
     }
   }
+
+  // function onMouseMove(event) {
+  //   // Update mouse for raycasting
+  //   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  //   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  //   // Handle dragging
+  //   if (isDragging.current) {
+  //     const deltaX = event.clientX - lastMousePosition.current.x;
+
+  //     // Adjust rotation speed as needed
+  //     const rotationSpeed = 0.0025;
+
+  //     // Update sphere rotation around the y-axis only
+  //     if (sphereRef.current) {
+  //       // Create a quaternion for the y-axis rotation
+  //       const yRotation = new THREE.Quaternion().setFromAxisAngle(
+  //         new THREE.Vector3(0, 1, 0), // y-axis
+  //         deltaX * rotationSpeed
+  //       );
+
+  //       // Apply the rotation
+  //       sphereRef.current.quaternion.multiplyQuaternions(
+  //         yRotation,
+  //         sphereRef.current.quaternion
+  //       );
+  //     }
+
+  //     lastMousePosition.current = {
+  //       x: event.clientX,
+  //       y: event.clientY,
+  //     };
+  //   }
+  // }
 
   function onMouseUp() {
     console.log("onMouseUp");
@@ -62,12 +110,17 @@ const ThreeScene = () => {
 
   function getLatLongFromPoint(point) {
     const radius = 1; // Your sphere's radius
+    const x = point.x;
+    const y = point.y;
+    const z = point.z;
 
-    // Latitude
-    const lat = 90 - (Math.acos(point.y / radius) * 180) / Math.PI;
+    // Calculate latitude (phi) and longitude (lambda) in radians
+    const phi = Math.asin(y); // Latitude ranges from -90° to 90°
+    const lambda = Math.atan2(x, z); // Longitude ranges from -180° to 180°
 
-    // Longitude
-    const lon = (Math.atan2(point.z, point.x) * 180) / Math.PI;
+    // Convert radians to degrees
+    const lat = phi * (180 / Math.PI);
+    const lon = lambda * (180 / Math.PI);
 
     return { lat, lon };
   }
@@ -97,8 +150,8 @@ const ThreeScene = () => {
 
     // Add a cube
     const sphere = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 50, 50),
-      // new THREE.SphereGeometry(1, 50, 50, -Math.PI / 2),
+      // new THREE.SphereGeometry(1, 50, 50),
+      new THREE.SphereGeometry(1, 50, 50, -Math.PI / 2),
       new THREE.MeshBasicMaterial({
         // map: new THREE.TextureLoader().load("/earthmap.jpeg"),
         // map: new THREE.TextureLoader().load("/earthnight.jpeg"),
@@ -120,6 +173,17 @@ const ThreeScene = () => {
     sphereRef.current = sphere;
 
     // cameraRef.current.lookAt(sphere.position);
+    // const dotGeometry = new THREE.SphereGeometry(0.05, 32, 32); // Adjust size as needed
+    // const dotMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    // const redDot = new THREE.Mesh(dotGeometry, dotMaterial);
+
+    // // Position the red dot at local coordinates (0, 0, 1)
+    // // Assuming the sphere's radius is 1. Adjust the position if the radius is different
+    // redDot.position.set(0, 0, 1);
+
+    // // Add the red dot to the sphere
+    // sphere.add(redDot);
+
     const raycaster = new THREE.Raycaster();
 
     document.addEventListener("mousemove", onMouseMove, false);
@@ -127,12 +191,15 @@ const ThreeScene = () => {
     document.addEventListener("mouseup", onMouseUp, false);
 
     window.addEventListener("resize", onWindowResize, false);
+    // const sphereaxesHelper = new THREE.AxesHelper(1.5);
+    // sphere.add(sphereaxesHelper);
 
     scene.add(sphere);
 
     // HELPERS--------------------------------------
     const axesHelper = new THREE.AxesHelper(2); // The parameter 5 defines the size of the axes
     scene.add(axesHelper);
+
     // const gridHelper = new THREE.GridHelper(10, 10);
     // scene.add(gridHelper);
 
@@ -175,42 +242,44 @@ const ThreeScene = () => {
     // Animation loop
     const animate = function () {
       requestAnimationFrame(animate);
-      if (
-        lastCalculatedMousePosition.current.x !== mouse.x ||
-        lastCalculatedMousePosition.current.y !== mouse.y
-      ) {
-        raycaster.setFromCamera(mouse, cameraRef.current);
+      // if (
+      //   lastCalculatedMousePosition.current.x !== mouse.x ||
+      //   lastCalculatedMousePosition.current.y !== mouse.y
+      // ) {
+      raycaster.setFromCamera(mouse, cameraRef.current);
 
-        const intersects = raycaster.intersectObject(sphere);
+      const intersects = raycaster.intersectObject(sphere);
 
-        if (intersects.length > 0) {
-          const distanceToIntersection = intersects[0].distance;
-          const distanceToSphere = cameraRef.current.position.distanceTo(
-            sphere.position
-          );
-          const point = intersects[0].point;
-          const localPoint = sphere.worldToLocal(point.clone());
+      if (intersects.length > 0) {
+        // const distanceToIntersection = intersects[0].distance;
+        // const distanceToSphere = cameraRef.current.position.distanceTo(
+        //   sphere.position
+        // );
+        const point = intersects[0].point;
+        const localPoint = sphere.worldToLocal(point.clone());
 
-          console.log("Global coordinates:");
-          console.log(point);
-          console.log("Local Sphere coordinates");
-          console.log(localPoint);
-          // console.log("Hovering over sphere");
-          const { lat, lon } = getLatLongFromPoint(localPoint);
-          console.log("Earth Coordinates");
-          console.log({ lat: lat, lon: lon });
-          lastCalculatedMousePosition.current = {
-            x: mouse.x,
-            y: mouse.y,
-          };
-        } else {
-          // scene.rotation.x += 0.001;
-          // scene.rotation.y += 0.001;
-        }
-        rendererRef.current.render(scene, cameraRef.current);
-      } else if (isDragging) {
-        rendererRef.current.render(scene, cameraRef.current);
+        console.log("Global coordinates:");
+        console.log(point);
+        console.log("Local Sphere coordinates");
+        console.log(localPoint);
+        // console.log("Hovering over sphere");
+        const { lat, lon } = getLatLongFromPoint(localPoint);
+        console.log("Earth Coordinates");
+        console.log({ lat: lat, lon: lon });
+        lastCalculatedMousePosition.current = {
+          x: mouse.x,
+          y: mouse.y,
+        };
+      } else {
+        // scene.rotation.x += 0.001;
+        // scene.rotation.y += 0.001;
+        // sphere.rotation.x += 0.001;
+        // sphere.rotation.y += 0.001;
       }
+      rendererRef.current.render(scene, cameraRef.current);
+      // } else if (isDragging) {
+      //   rendererRef.current.render(scene, cameraRef.current);
+      // }
     };
 
     animate();
