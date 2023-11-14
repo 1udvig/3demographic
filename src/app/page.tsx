@@ -1,6 +1,7 @@
 "use client";
 import React, { useRef, useEffect, useState } from "react";
 import * as THREE from "three";
+import * as turf from "@turf/turf";
 
 const ThreeScene = () => {
   const mountRef = useRef(null);
@@ -11,6 +12,27 @@ const ThreeScene = () => {
   const lastMousePosition = useRef({ x: null, y: null });
   const lastCalculatedMousePosition = useRef({ x: null, y: null });
   const mouse = new THREE.Vector2(2, 2);
+  const [geoJSONData, setgeoJSONData] = useState(null);
+
+  // Function to find the country
+  function findCountry(latitude, longitude, geojsonData) {
+    const point = turf.point([longitude, latitude]);
+
+    let countryFound = null;
+    geojsonData.features.forEach((feature) => {
+      if (turf.booleanPointInPolygon(point, feature)) {
+        countryFound = feature.properties.ADMIN;
+      }
+    });
+
+    return countryFound;
+  }
+
+  // Example usage
+  // const latitude = 48.8566;
+  // const longitude = 2.3522;
+  // const country = findCountry(latitude, longitude, geojsonData);
+  // console.log(country);
 
   function onMouseDown(event) {
     console.log("onMouseDown");
@@ -127,6 +149,15 @@ const ThreeScene = () => {
 
   useEffect(() => {
     // Set up scene, camera, and renderer
+    fetch("/countries.geojson")
+      .then((response) => response.json())
+      .then((data) => {
+        setgeoJSONData(data);
+        console.log("geoJSONData set");
+      })
+      .catch((error) => {
+        console.error("Error fetching the GeoJSON data:", error);
+      });
 
     const scene = new THREE.Scene();
     cameraRef.current = new THREE.PerspectiveCamera(
@@ -258,14 +289,25 @@ const ThreeScene = () => {
         const point = intersects[0].point;
         const localPoint = sphere.worldToLocal(point.clone());
 
-        console.log("Global coordinates:");
-        console.log(point);
-        console.log("Local Sphere coordinates");
-        console.log(localPoint);
-        // console.log("Hovering over sphere");
+        // console.log("Global coordinates:");
+        // console.log(point);
+        // console.log("Local Sphere coordinates");
+        // console.log(localPoint);
+        // // console.log("Hovering over sphere");
         const { lat, lon } = getLatLongFromPoint(localPoint);
-        console.log("Earth Coordinates");
-        console.log({ lat: lat, lon: lon });
+        // console.log("Earth Coordinates");
+        // console.log({ lat: lat, lon: lon });
+        console.log("Searching for country");
+        const country = findCountry(lat, lon, geoJSONData);
+
+        console.log(country);
+        // if (geoJSONData) {
+        //   console.log("Searching for country");
+        //   const country = findCountry(lat, lon, geoJSONData);
+
+        //   console.log(country);
+
+        // }
         lastCalculatedMousePosition.current = {
           x: mouse.x,
           y: mouse.y,
@@ -294,6 +336,16 @@ const ThreeScene = () => {
       mountRef.current.removeChild(rendererRef.current.domElement);
     };
   }, []); // Add textureLoaded as a dependency
+
+  useEffect(() => {
+    // Ensure that geojsonData is not null
+    if (geoJSONData) {
+      const latitude = 59.8566;
+      const longitude = 18.3522;
+      const country = findCountry(latitude, longitude, geoJSONData);
+      console.log(country);
+    }
+  }, [geoJSONData]); // This effect depends on geojsonData
 
   return <div ref={mountRef} />;
 };
