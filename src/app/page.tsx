@@ -148,7 +148,13 @@ const ThreeScene = () => {
   }
 
   useEffect(() => {
-    // Set up scene, camera, and renderer
+    // Ensure that geojsonData is not null
+    // if (geoJSONData) {
+    //   const latitude = 59.8566;
+    //   const longitude = 18.3522;
+    //   const country = findCountry(latitude, longitude, geoJSONData);
+    //   console.log(country);
+    // }
     fetch("/countries.geojson")
       .then((response) => response.json())
       .then((data) => {
@@ -158,6 +164,10 @@ const ThreeScene = () => {
       .catch((error) => {
         console.error("Error fetching the GeoJSON data:", error);
       });
+  }, []); // This effect depends on geojsonData
+
+  useEffect(() => {
+    // Set up scene, camera, and renderer
 
     const scene = new THREE.Scene();
     cameraRef.current = new THREE.PerspectiveCamera(
@@ -166,14 +176,6 @@ const ThreeScene = () => {
       0.1,
       1000
     );
-    // const camera = new THREE.PerspectiveCamera(
-    //   75,
-    //   window.innerWidth / window.innerHeight,
-    //   0.1,
-    //   1000
-    // );
-    // const renderer = new THREE.WebGLRenderer({ antialias: true });
-    // cameraRef.current.position.set(0, 0, 5); // Adjust the Z value as needed
 
     rendererRef.current = new THREE.WebGLRenderer({ antialias: true });
     rendererRef.current.setSize(window.innerWidth, window.innerHeight);
@@ -203,18 +205,6 @@ const ThreeScene = () => {
 
     sphereRef.current = sphere;
 
-    // cameraRef.current.lookAt(sphere.position);
-    // const dotGeometry = new THREE.SphereGeometry(0.05, 32, 32); // Adjust size as needed
-    // const dotMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    // const redDot = new THREE.Mesh(dotGeometry, dotMaterial);
-
-    // // Position the red dot at local coordinates (0, 0, 1)
-    // // Assuming the sphere's radius is 1. Adjust the position if the radius is different
-    // redDot.position.set(0, 0, 1);
-
-    // // Add the red dot to the sphere
-    // sphere.add(redDot);
-
     const raycaster = new THREE.Raycaster();
 
     document.addEventListener("mousemove", onMouseMove, false);
@@ -222,12 +212,9 @@ const ThreeScene = () => {
     document.addEventListener("mouseup", onMouseUp, false);
 
     window.addEventListener("resize", onWindowResize, false);
-    // const sphereaxesHelper = new THREE.AxesHelper(1.5);
-    // sphere.add(sphereaxesHelper);
 
     scene.add(sphere);
 
-    // HELPERS--------------------------------------
     const axesHelper = new THREE.AxesHelper(2); // The parameter 5 defines the size of the axes
     scene.add(axesHelper);
 
@@ -249,22 +236,6 @@ const ThreeScene = () => {
 
     // Add the line to your scene
     scene.add(line);
-    // Create the sphere geometry with a radius of 0.1
-    // const sphereGeometry = new THREE.SphereGeometry(0.5, 50, 50);
-
-    // // Create a material for the sphere
-    // const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff }); // Set the color as needed
-
-    // // Create a mesh from the geometry and material
-    // const helpersphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-
-    // // Set the position of the sphere to (0, 0, 1)
-    // sphere.position.set(0, 0, 1);
-
-    // // Add the sphere to your scene
-    // scene.add(helpersphere);
-
-    // HELPERS--------------------------------------
 
     cameraRef.current.position.z = 2;
     cameraRef.current.position.y = 0;
@@ -289,25 +260,14 @@ const ThreeScene = () => {
         const point = intersects[0].point;
         const localPoint = sphere.worldToLocal(point.clone());
 
-        // console.log("Global coordinates:");
-        // console.log(point);
-        // console.log("Local Sphere coordinates");
-        // console.log(localPoint);
-        // // console.log("Hovering over sphere");
         const { lat, lon } = getLatLongFromPoint(localPoint);
-        // console.log("Earth Coordinates");
-        // console.log({ lat: lat, lon: lon });
-        console.log("Searching for country");
+
         const country = findCountry(lat, lon, geoJSONData);
+        if (country) {
+          console.log(country);
+        }
+        // console.log(country);
 
-        console.log(country);
-        // if (geoJSONData) {
-        //   console.log("Searching for country");
-        //   const country = findCountry(lat, lon, geoJSONData);
-
-        //   console.log(country);
-
-        // }
         lastCalculatedMousePosition.current = {
           x: mouse.x,
           y: mouse.y,
@@ -335,17 +295,7 @@ const ThreeScene = () => {
 
       mountRef.current.removeChild(rendererRef.current.domElement);
     };
-  }, []); // Add textureLoaded as a dependency
-
-  useEffect(() => {
-    // Ensure that geojsonData is not null
-    if (geoJSONData) {
-      const latitude = 59.8566;
-      const longitude = 18.3522;
-      const country = findCountry(latitude, longitude, geoJSONData);
-      console.log(country);
-    }
-  }, [geoJSONData]); // This effect depends on geojsonData
+  }, [geoJSONData]); // Add textureLoaded as a dependency
 
   return <div ref={mountRef} />;
 };
