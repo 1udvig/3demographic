@@ -2,6 +2,7 @@
 import React, { useRef, useEffect, useState } from "react";
 import * as THREE from "three";
 import * as turf from "@turf/turf";
+import { createCountryOutline, getPointFromLatLong } from "./geo";
 
 const ThreeScene = () => {
   const mountRef = useRef(null);
@@ -13,29 +14,38 @@ const ThreeScene = () => {
   const lastCalculatedMousePosition = useRef({ x: null, y: null });
   const mouse = new THREE.Vector2(2, 2);
   const [geoJSONData, setgeoJSONData] = useState(null);
+  const phiStartOffset = -Math.PI / 2;
+  const currentCountryOutline = useRef(null);
 
   // Function to find the country
+  // optimized version below
+  // function findCountry(latitude, longitude, geojsonData) {
+  //   const point = turf.point([longitude, latitude]);
+
+  //   let countryFound = null;
+  //   geojsonData.features.forEach((feature) => {
+  //     if (turf.booleanPointInPolygon(point, feature)) {
+  //       countryFound = feature.properties.ADMIN;
+  //     }
+  //   });
+
+  //   return countryFound;
+  // }
+
   function findCountry(latitude, longitude, geojsonData) {
     const point = turf.point([longitude, latitude]);
 
-    let countryFound = null;
-    geojsonData.features.forEach((feature) => {
+    for (const feature of geojsonData.features) {
       if (turf.booleanPointInPolygon(point, feature)) {
-        countryFound = feature.properties.ADMIN;
+        return feature.properties.ADMIN; // Return immediately when the country is found
       }
-    });
+    }
 
-    return countryFound;
+    return null; // Return null if no country is found
   }
 
-  // Example usage
-  // const latitude = 48.8566;
-  // const longitude = 2.3522;
-  // const country = findCountry(latitude, longitude, geojsonData);
-  // console.log(country);
-
   function onMouseDown(event) {
-    console.log("onMouseDown");
+    // console.log("onMouseDown");
     isDragging.current = true;
     lastMousePosition.current = {
       x: event.clientX,
@@ -47,7 +57,7 @@ const ThreeScene = () => {
     // Update mouse for raycasting
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    console.log("onMouseMove with isDragging: " + isDragging.current);
+    // console.log("onMouseMove with isDragging: " + isDragging.current);
     // Handle dragging
     if (isDragging.current) {
       const deltaX = event.clientX - lastMousePosition.current.x;
@@ -118,7 +128,7 @@ const ThreeScene = () => {
   // }
 
   function onMouseUp() {
-    console.log("onMouseUp");
+    // console.log("onMouseUp");
     isDragging.current = false;
   }
 
@@ -147,6 +157,24 @@ const ThreeScene = () => {
     return { lat, lon };
   }
 
+  function updateCountryOutline(country) {
+    if (country && geoJSONData) {
+      console.log(country);
+
+      // Remove the previous country outline if it exists
+      if (currentCountryOutline.current && sphereRef.current) {
+        sphereRef.current.remove(currentCountryOutline.current);
+      }
+
+      const countryOutline = createCountryOutline(geoJSONData, country, 1.0);
+
+      if (countryOutline) {
+        sphereRef.current.add(countryOutline);
+        currentCountryOutline.current = countryOutline; // Update the reference to the new outline
+      }
+    }
+  }
+
   useEffect(() => {
     // Ensure that geojsonData is not null
     // if (geoJSONData) {
@@ -170,6 +198,7 @@ const ThreeScene = () => {
     // Set up scene, camera, and renderer
 
     const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x808080);
     cameraRef.current = new THREE.PerspectiveCamera(
       75,
       window.innerWidth / window.innerHeight,
@@ -181,26 +210,30 @@ const ThreeScene = () => {
     rendererRef.current.setSize(window.innerWidth, window.innerHeight);
     mountRef.current.appendChild(rendererRef.current.domElement);
 
+    // console.log(geoJSONData);
     // Add a cube
+    const sphereMaterial = new THREE.MeshBasicMaterial({
+      // map: new THREE.TextureLoader().load("/earthmap.jpeg"),
+      // map: new THREE.TextureLoader().load("/earthnight.jpeg"),
+      map: new THREE.TextureLoader().load(
+        "/earthmap.jpeg",
+        (texture) => {
+          // Texture loaded
+          sphere.material.map = texture;
+          sphere.material.needsUpdate = true;
+        },
+        undefined,
+        (error) => {
+          console.error("Error loading texture:", error);
+        }
+      ),
+      transparent: false,
+      // opacity: 0.3,
+    });
     const sphere = new THREE.Mesh(
       // new THREE.SphereGeometry(1, 50, 50),
-      new THREE.SphereGeometry(1, 50, 50, -Math.PI / 2),
-      new THREE.MeshBasicMaterial({
-        // map: new THREE.TextureLoader().load("/earthmap.jpeg"),
-        // map: new THREE.TextureLoader().load("/earthnight.jpeg"),
-        map: new THREE.TextureLoader().load(
-          "/earthmap.jpeg",
-          (texture) => {
-            // Texture loaded
-            sphere.material.map = texture;
-            sphere.material.needsUpdate = true;
-          },
-          undefined,
-          (error) => {
-            console.error("Error loading texture:", error);
-          }
-        ),
-      })
+      new THREE.SphereGeometry(1, 50, 50, phiStartOffset),
+      sphereMaterial
     );
 
     sphereRef.current = sphere;
@@ -215,27 +248,28 @@ const ThreeScene = () => {
 
     scene.add(sphere);
 
-    const axesHelper = new THREE.AxesHelper(2); // The parameter 5 defines the size of the axes
-    scene.add(axesHelper);
+    // const axesHelper = new THREE.AxesHelper(2); // The parameter 5 defines the size of the axes
+    // scene.add(axesHelper);
 
     // const gridHelper = new THREE.GridHelper(10, 10);
     // scene.add(gridHelper);
 
     // Define the start and end points
-    const start = new THREE.Vector3(0, 0, 5);
-    const end = new THREE.Vector3(0, 0, 1);
+    // const start = new THREE.Vector3(0, 0, 5);
+    // const end = new THREE.Vector3(0, 0, 1);
 
     // Create a geometry that will represent the line
-    const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
+    // const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
 
     // Create a material for the line
-    const material = new THREE.LineBasicMaterial({ color: 0xffffff }); // Set the color as needed
+    // const material = new THREE.LineBasicMaterial({ color: 0xffffff }); // Set the color as needed
 
     // Create the line using the geometry and material
-    const line = new THREE.Line(geometry, material);
+    // const line = new THREE.Line(geometry, material);
 
     // Add the line to your scene
-    scene.add(line);
+
+    // scene.add(line);
 
     cameraRef.current.position.z = 2;
     cameraRef.current.position.y = 0;
@@ -259,14 +293,32 @@ const ThreeScene = () => {
         // );
         const point = intersects[0].point;
         const localPoint = sphere.worldToLocal(point.clone());
+        // console.log(localPoint);
 
         const { lat, lon } = getLatLongFromPoint(localPoint);
 
         const country = findCountry(lat, lon, geoJSONData);
-        if (country) {
-          console.log(country);
+        if (country !== currentCountryOutline.current) {
+          updateCountryOutline(country);
+          currentCountryOutline.current = country;
         }
-        // console.log(country);
+
+        // if(country == "Sweden"){
+        //   if (highLightedCountry.current != "Sweden") {
+        //     if (geoJSONData) {
+        //       const countryOutline = createCountryOutline(
+        //         geoJSONData,
+        //         "Sweden",
+        //         1.0
+        //       );
+        //       // console.log(countryOutline);
+        //       if (countryOutline) {
+        //         sphere.add(countryOutline);
+        //         highLightedCountry.current = 'Sweden';
+        //       }
+        //     }
+        //   }
+        // }
 
         lastCalculatedMousePosition.current = {
           x: mouse.x,
