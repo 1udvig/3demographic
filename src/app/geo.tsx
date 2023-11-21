@@ -94,7 +94,9 @@ export function createCountryOutline(geojsonData, countryName, radius) {
         // }
         // console.log(points);
         const geometry = new THREE.BufferGeometry().setFromPoints(points);
-        lines.push(new THREE.Line(geometry, material));
+        const linetoPush = new THREE.Line(geometry, material);
+        linetoPush.raycastable = false;
+        lines.push(linetoPush);
       }
     }
   };
@@ -116,7 +118,9 @@ export function createCountryOutline(geojsonData, countryName, radius) {
 
   // If you want to return a single object containing all lines, use THREE.Group
   const group = new THREE.Group();
+  // console.log(lines);
   lines.forEach((line) => {
+    line.raycastable = false;
     group.add(line);
   });
 

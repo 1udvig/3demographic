@@ -16,6 +16,19 @@ const ThreeScene = () => {
   const [geoJSONData, setgeoJSONData] = useState(null);
   const phiStartOffset = -Math.PI / 2;
   const currentCountryOutline = useRef(null);
+  const currentCountry = useRef(null);
+  const frameCounter = useRef(0);
+  const frameThreshold = 3; // Adjust this value based on your needs
+  const sceneRef = useRef(null);
+
+  const shouldCheckForCountry = () => {
+    frameCounter.current++;
+    if (frameCounter.current >= frameThreshold) {
+      frameCounter.current = 0;
+      return true;
+    }
+    return false;
+  };
 
   // Function to find the country
   // optimized version below
@@ -58,6 +71,7 @@ const ThreeScene = () => {
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
     // console.log("onMouseMove with isDragging: " + isDragging.current);
+
     // Handle dragging
     if (isDragging.current) {
       const deltaX = event.clientX - lastMousePosition.current.x;
@@ -158,20 +172,16 @@ const ThreeScene = () => {
   }
 
   function updateCountryOutline(country) {
-    if (country && geoJSONData) {
-      console.log(country);
+    // Remove the previous country outline if it exists
 
-      // Remove the previous country outline if it exists
-      if (currentCountryOutline.current && sphereRef.current) {
-        sphereRef.current.remove(currentCountryOutline.current);
-      }
+    sphereRef.current.remove(currentCountryOutline.current);
 
-      const countryOutline = createCountryOutline(geoJSONData, country, 1.0);
+    const countryOutline = createCountryOutline(geoJSONData, country, 1.0);
 
-      if (countryOutline) {
-        sphereRef.current.add(countryOutline);
-        currentCountryOutline.current = countryOutline; // Update the reference to the new outline
-      }
+    if (countryOutline) {
+      sphereRef.current.add(countryOutline);
+      // sceneRef.current.add(countryOutline);
+      currentCountryOutline.current = countryOutline; // Update the reference to the new outline
     }
   }
 
@@ -188,6 +198,7 @@ const ThreeScene = () => {
       .then((data) => {
         setgeoJSONData(data);
         console.log("geoJSONData set");
+        console.log(data);
       })
       .catch((error) => {
         console.error("Error fetching the GeoJSON data:", error);
@@ -236,6 +247,12 @@ const ThreeScene = () => {
       sphereMaterial
     );
 
+    // const ghostSphere = new THREE.Mesh(
+    //   // new THREE.SphereGeometry(1, 50, 50),
+    //   new THREE.SphereGeometry(1, 50, 50, phiStartOffset),
+    //   new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.1 })
+    // );
+
     sphereRef.current = sphere;
 
     const raycaster = new THREE.Raycaster();
@@ -247,9 +264,12 @@ const ThreeScene = () => {
     window.addEventListener("resize", onWindowResize, false);
 
     scene.add(sphere);
+    // scene.add(ghostSphere);
 
-    // const axesHelper = new THREE.AxesHelper(2); // The parameter 5 defines the size of the axes
-    // scene.add(axesHelper);
+    const axesHelper = new THREE.AxesHelper(2); // The parameter 5 defines the size of the axes
+    scene.add(axesHelper);
+
+    sceneRef.current = scene;
 
     // const gridHelper = new THREE.GridHelper(10, 10);
     // scene.add(gridHelper);
@@ -281,44 +301,65 @@ const ThreeScene = () => {
       // if (
       //   lastCalculatedMousePosition.current.x !== mouse.x ||
       //   lastCalculatedMousePosition.current.y !== mouse.y
-      // ) {
-      raycaster.setFromCamera(mouse, cameraRef.current);
+      if (geoJSONData) {
+        // ) {
+        // console.log(mouse);
+        if (shouldCheckForCountry()) {
+          raycaster.setFromCamera(mouse, cameraRef.current);
 
-      const intersects = raycaster.intersectObject(sphere);
+          let intersects = raycaster.intersectObject(sphere);
 
-      if (intersects.length > 0) {
-        // const distanceToIntersection = intersects[0].distance;
-        // const distanceToSphere = cameraRef.current.position.distanceTo(
-        //   sphere.position
-        // );
-        const point = intersects[0].point;
-        const localPoint = sphere.worldToLocal(point.clone());
-        // console.log(localPoint);
+          intersects = intersects.filter((intersect) => {
+            return intersect.object.type !== "Line";
+          });
 
-        const { lat, lon } = getLatLongFromPoint(localPoint);
+          if (intersects.length > 0) {
+            // const distanceToIntersection = intersects[0].distance;
+            // const distanceToSphere = cameraRef.current.position.distanceTo(
+            //   sphere.position
+            // );
+            const point = intersects[0].point;
 
-        const country = findCountry(lat, lon, geoJSONData);
-        if (country !== currentCountryOutline.current) {
-          updateCountryOutline(country);
-          currentCountryOutline.current = country;
+            // console.log(point);
+
+            const localPoint = sphere.worldToLocal(point.clone());
+            // console.log(localPoint);
+
+            const { lat, lon } = getLatLongFromPoint(localPoint);
+
+            const country = findCountry(lat, lon, geoJSONData);
+            if (country) {
+              console.log(country);
+              if (country !== currentCountryOutline.current) {
+                updateCountryOutline(country);
+
+                currentCountry.current = country;
+              }
+            } else {
+              sphereRef.current.remove(currentCountryOutline.current);
+            }
+            // console.log(country);
+          } else {
+            sphereRef.current.remove(currentCountryOutline.current);
+          }
+
+          // if(country == "Sweden"){
+          //   if (highLightedCountry.current != "Sweden") {
+          //     if (geoJSONData) {
+          //       const countryOutline = createCountryOutline(
+          //         geoJSONData,
+          //         "Sweden",
+          //         1.0
+          //       );
+          //       // console.log(countryOutline);
+          //       if (countryOutline) {
+          //         sphere.add(countryOutline);
+          //         highLightedCountry.current = 'Sweden';
+          //       }
+          //     }
+          //   }
+          // }
         }
-
-        // if(country == "Sweden"){
-        //   if (highLightedCountry.current != "Sweden") {
-        //     if (geoJSONData) {
-        //       const countryOutline = createCountryOutline(
-        //         geoJSONData,
-        //         "Sweden",
-        //         1.0
-        //       );
-        //       // console.log(countryOutline);
-        //       if (countryOutline) {
-        //         sphere.add(countryOutline);
-        //         highLightedCountry.current = 'Sweden';
-        //       }
-        //     }
-        //   }
-        // }
 
         lastCalculatedMousePosition.current = {
           x: mouse.x,
