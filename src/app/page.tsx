@@ -3,6 +3,16 @@ import React, { useRef, useEffect, useState } from "react";
 import * as THREE from "three";
 import * as turf from "@turf/turf";
 import { createCountryOutline, getPointFromLatLong } from "./geo";
+import {
+  NavigationMenu,
+  NavigationMenuContent,
+  NavigationMenuIndicator,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  NavigationMenuTrigger,
+  NavigationMenuViewport,
+} from "@/components/ui/navigation-menu";
 
 const ThreeScene = () => {
   const mountRef = useRef(null);
@@ -20,6 +30,9 @@ const ThreeScene = () => {
   const frameCounter = useRef(0);
   const frameThreshold = 3; // Adjust this value based on your needs
   const sceneRef = useRef(null);
+  const lastClickedPosition = useRef(null);
+  const shouldSelect = useRef(null);
+  const radius = 1;
 
   const shouldCheckForCountry = () => {
     frameCounter.current++;
@@ -57,10 +70,64 @@ const ThreeScene = () => {
     return null; // Return null if no country is found
   }
 
+  function centerCountry(country, geoJSONData) {
+    console.log(country);
+    for (const feature of geoJSONData.features) {
+      if (feature.properties.ADMIN == country) {
+        const centroid = turf.centroid(feature.geometry);
+        const [lat, lng] = centroid.geometry.coordinates;
+        console.log(lat);
+        console.log(lng);
+        const centroidVector = getPointFromLatLong(
+          lat,
+          lng,
+          radius,
+          phiStartOffset
+        );
+        console.log(centroidVector);
+        console.log(sphereRef.current.localToWorld(centroidVector));
+        const cameraForward = cameraRef.current.getWorldDirection(
+          new THREE.Vector3()
+        );
+        console.log(cameraForward);
+        const axisOfRotation = new THREE.Vector3()
+          .crossVectors(centroidVector, cameraForward)
+          .normalize();
+        const angle = Math.acos(
+          centroidVector.dot(cameraForward) / centroidVector.length()
+        );
+        console.log(axisOfRotation);
+        console.log(angle);
+        animateRotation(axisOfRotation, angle);
+      }
+    }
+  }
+
+  function animateRotation(axis, angle) {
+    // Create a quaternion based on the axis and angle
+    const quaternion = new THREE.Quaternion();
+    quaternion.setFromAxisAngle(axis, angle);
+
+    // Apply the quaternion to the globe's rotation
+    sphereRef.current.quaternion.multiplyQuaternions(
+      quaternion,
+      sphereRef.current.quaternion
+    );
+
+    // Normalize the quaternion to ensure the rotation is valid
+    sphereRef.current.quaternion.normalize();
+
+    // Update the globe's matrix to apply the rotation
+    sphereRef.current.updateMatrix();
+  }
+
   function onMouseDown(event) {
-    // console.log("onMouseDown");
     isDragging.current = true;
     lastMousePosition.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+    lastClickedPosition.current = {
       x: event.clientX,
       y: event.clientY,
     };
@@ -68,6 +135,9 @@ const ThreeScene = () => {
 
   function onMouseMove(event) {
     // Update mouse for raycasting
+    // console.log(event.clientX);
+    // console.log(lastMousePosition.current.x);
+
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
     // console.log("onMouseMove with isDragging: " + isDragging.current);
@@ -141,8 +211,20 @@ const ThreeScene = () => {
   //   }
   // }
 
-  function onMouseUp() {
+  function onMouseUp(event) {
     // console.log("onMouseUp");
+    // console.log(lastMousePosition.current.x);
+    if (
+      lastClickedPosition.current.x != event.clientX ||
+      lastClickedPosition.current.y != event.clientY
+    ) {
+      // console.log("moused moved efter click, should not select country");
+      shouldSelect.current = false;
+    } else {
+      // console.log("mouse not moved after click, select country!");
+      shouldSelect.current = true;
+    }
+
     isDragging.current = false;
   }
 
@@ -197,7 +279,7 @@ const ThreeScene = () => {
       .then((response) => response.json())
       .then((data) => {
         setgeoJSONData(data);
-        console.log("geoJSONData set");
+        // console.log("geoJSONData set");
         console.log(data);
       })
       .catch((error) => {
@@ -266,8 +348,8 @@ const ThreeScene = () => {
     scene.add(sphere);
     // scene.add(ghostSphere);
 
-    const axesHelper = new THREE.AxesHelper(2); // The parameter 5 defines the size of the axes
-    scene.add(axesHelper);
+    // const axesHelper = new THREE.AxesHelper(2); // The parameter 5 defines the size of the axes
+    // scene.add(axesHelper);
 
     sceneRef.current = scene;
 
@@ -301,8 +383,10 @@ const ThreeScene = () => {
       // if (
       //   lastCalculatedMousePosition.current.x !== mouse.x ||
       //   lastCalculatedMousePosition.current.y !== mouse.y
+      // console.log(shouldSelect);
       if (geoJSONData) {
         // ) {
+
         // console.log(mouse);
         if (shouldCheckForCountry()) {
           raycaster.setFromCamera(mouse, cameraRef.current);
@@ -329,7 +413,12 @@ const ThreeScene = () => {
 
             const country = findCountry(lat, lon, geoJSONData);
             if (country) {
-              console.log(country);
+              // console.log(country);
+              if (shouldSelect.current) {
+                // console.log("clicked on: " + country);
+                centerCountry(country, geoJSONData);
+                shouldSelect.current = false;
+              }
               if (country !== currentCountryOutline.current) {
                 updateCountryOutline(country);
 
@@ -371,6 +460,7 @@ const ThreeScene = () => {
         // sphere.rotation.x += 0.001;
         // sphere.rotation.y += 0.001;
       }
+
       rendererRef.current.render(scene, cameraRef.current);
       // } else if (isDragging) {
       //   rendererRef.current.render(scene, cameraRef.current);
@@ -390,7 +480,37 @@ const ThreeScene = () => {
     };
   }, [geoJSONData]); // Add textureLoaded as a dependency
 
-  return <div ref={mountRef} />;
+  const Overlay = () => (
+    <div
+      // style={{
+      //   position: "absolute",
+      //   top: "10%",
+      //   left: "10%",
+      //   // backgroundColor: "white",
+      //   // padding: "10px",
+      //   borderRadius: "5px",
+      //   // display: showOverlay ? "block" : "none",
+      // }}
+      className=" absolute top-10 left-10"
+    >
+      <NavigationMenu>
+        <NavigationMenuList>
+          <NavigationMenuItem>
+            <NavigationMenuTrigger>Item One</NavigationMenuTrigger>
+            <NavigationMenuContent className="p-5">
+              <NavigationMenuLink>Link</NavigationMenuLink>
+            </NavigationMenuContent>
+          </NavigationMenuItem>
+        </NavigationMenuList>
+      </NavigationMenu>
+    </div>
+  );
+
+  return (
+    <div ref={mountRef}>
+      <Overlay />
+    </div>
+  );
 };
 
 export default ThreeScene;
