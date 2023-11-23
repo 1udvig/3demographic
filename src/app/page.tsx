@@ -33,6 +33,8 @@ const ThreeScene = () => {
   const lastClickedPosition = useRef(null);
   const shouldSelect = useRef(null);
   const radius = 1;
+  const minFov = 35;
+  const maxFov = 80;
 
   const shouldCheckForCountry = () => {
     frameCounter.current++;
@@ -75,50 +77,102 @@ const ThreeScene = () => {
     for (const feature of geoJSONData.features) {
       if (feature.properties.ADMIN == country) {
         const centroid = turf.centroid(feature.geometry);
-        const [lat, lng] = centroid.geometry.coordinates;
-        console.log(lat);
-        console.log(lng);
+        const [lng, lat] = centroid.geometry.coordinates;
+        console.log("Coordinates of centroid: ", lat, lng);
         const centroidVector = getPointFromLatLong(
           lat,
           lng,
           radius,
           phiStartOffset
         );
-        console.log(centroidVector);
-        console.log(sphereRef.current.localToWorld(centroidVector));
+        console.log("Local point on sphere: ", centroidVector);
+        const worldCoordinates = sphereRef.current.localToWorld(centroidVector);
+        console.log("World point in scene: ", worldCoordinates);
         const cameraForward = cameraRef.current.getWorldDirection(
           new THREE.Vector3()
         );
-        console.log(cameraForward);
+        cameraForward.negate();
+
+        // const smallSphereGeometry = new THREE.SphereGeometry(0.01, 32, 32); // Smaller sphere
+        // const smallSphereMaterial = new THREE.MeshBasicMaterial({
+        //   color: 0x00ff00,
+        // }); // Different color
+        // const smallSphere = new THREE.Mesh(
+        //   smallSphereGeometry,
+        //   smallSphereMaterial
+        // );
+
+        // Set the position of the small sphere
+        // smallSphere.position.set(
+        //   centroidVector.x,
+        //   centroidVector.y,
+        //   centroidVector.z
+        // );
+        // sphereRef.current.add(smallSphere);
+        // console.log(cameraForward);
         const axisOfRotation = new THREE.Vector3()
           .crossVectors(centroidVector, cameraForward)
           .normalize();
         const angle = Math.acos(
           centroidVector.dot(cameraForward) / centroidVector.length()
         );
-        console.log(axisOfRotation);
-        console.log(angle);
+        // console.log(axisOfRotation);
+        // console.log(angle);
         animateRotation(axisOfRotation, angle);
       }
     }
   }
 
+  // function animateRotation(axis, angle) {
+  //   // Create a quaternion based on the axis and angle
+  //   const quaternion = new THREE.Quaternion();
+  //   quaternion.setFromAxisAngle(axis, angle);
+
+  //   // Apply the quaternion to the globe's rotation
+  //   sphereRef.current.quaternion.multiplyQuaternions(
+  //     quaternion,
+  //     sphereRef.current.quaternion
+  //   );
+
+  //   // Normalize the quaternion to ensure the rotation is valid
+  //   sphereRef.current.quaternion.normalize();
+
+  //   // Update the globe's matrix to apply the rotation
+  //   sphereRef.current.updateMatrix();
+  // }
   function animateRotation(axis, angle) {
-    // Create a quaternion based on the axis and angle
-    const quaternion = new THREE.Quaternion();
-    quaternion.setFromAxisAngle(axis, angle);
+    if (sphereRef.current) {
+      // Create a quaternion based on the axis and angle
+      const quaternion = new THREE.Quaternion();
+      quaternion.setFromAxisAngle(axis, angle);
 
-    // Apply the quaternion to the globe's rotation
-    sphereRef.current.quaternion.multiplyQuaternions(
-      quaternion,
-      sphereRef.current.quaternion
-    );
+      // Apply the quaternion to the globe's rotation
+      const newQuaternion = sphereRef.current.quaternion
+        .clone()
+        .multiply(quaternion);
 
-    // Normalize the quaternion to ensure the rotation is valid
-    sphereRef.current.quaternion.normalize();
+      // Convert quaternion to Euler to check and constrain rotations
+      const newEuler = new THREE.Euler().setFromQuaternion(
+        newQuaternion,
+        "XYZ"
+      );
 
-    // Update the globe's matrix to apply the rotation
-    sphereRef.current.updateMatrix();
+      // Constrain the X rotation to avoid flipping
+      newEuler.x = Math.max(Math.min(newEuler.x, Math.PI / 2), -Math.PI / 2);
+
+      // Reset Z rotation to 0 to keep the North Pole within the YZ plane
+      newEuler.z = 0;
+
+      // Update the sphere's quaternion
+      sphereRef.current.quaternion.setFromEuler(newEuler);
+
+      // Normalize the quaternion to ensure the rotation is valid
+      sphereRef.current.quaternion.normalize();
+
+      // Update the globe's matrix to apply the rotation
+      sphereRef.current.updateMatrix();
+      setCameraFOV(35);
+    }
   }
 
   function onMouseDown(event) {
@@ -133,14 +187,53 @@ const ThreeScene = () => {
     };
   }
 
+  // function onMouseMove(event) {
+  //   // Update mouse for raycasting
+  //   // console.log(event.clientX);
+  //   // console.log(lastMousePosition.current.x);
+
+  //   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  //   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  //   // console.log("onMouseMove with isDragging: " + isDragging.current);
+
+  //   // Handle dragging
+  //   if (isDragging.current) {
+  //     const deltaX = event.clientX - lastMousePosition.current.x;
+  //     const deltaY = event.clientY - lastMousePosition.current.y;
+
+  //     // Adjust rotation speed as needed
+  //     const rotationSpeed = 0.0025;
+
+  //     // Update sphere rotation
+  //     if (sphereRef.current) {
+  //       const deltaRotationQuaternion = new THREE.Quaternion().setFromEuler(
+  //         new THREE.Euler(
+  //           deltaY * rotationSpeed,
+  //           deltaX * rotationSpeed,
+  //           0,
+  //           "XYZ" // Rotation order
+  //         )
+  //       );
+
+  //       sphereRef.current.quaternion.multiplyQuaternions(
+  //         deltaRotationQuaternion,
+  //         sphereRef.current.quaternion
+  //       );
+
+  //       // sphereRef.current.rotation.y += deltaX * rotationSpeed;
+  //       // sphereRef.current.rotation.x += deltaY * rotationSpeed;
+  //     }
+
+  //     lastMousePosition.current = {
+  //       x: event.clientX,
+  //       y: event.clientY,
+  //     };
+  //   }
+  // }
   function onMouseMove(event) {
     // Update mouse for raycasting
-    // console.log(event.clientX);
-    // console.log(lastMousePosition.current.x);
-
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    // console.log("onMouseMove with isDragging: " + isDragging.current);
 
     // Handle dragging
     if (isDragging.current) {
@@ -152,22 +245,20 @@ const ThreeScene = () => {
 
       // Update sphere rotation
       if (sphereRef.current) {
-        const deltaRotationQuaternion = new THREE.Quaternion().setFromEuler(
-          new THREE.Euler(
-            deltaY * rotationSpeed,
-            deltaX * rotationSpeed,
-            0,
-            "XYZ" // Rotation order
-          )
+        // Rotate only around the Y-axis for horizontal mouse movement
+        sphereRef.current.rotation.y += deltaX * rotationSpeed;
+
+        // Carefully manage rotation around the X-axis
+        // You can implement limits here to prevent the North Pole from tilting too much
+        const newRotationX =
+          sphereRef.current.rotation.x + deltaY * rotationSpeed;
+        sphereRef.current.rotation.x = Math.max(
+          Math.min(newRotationX, Math.PI / 2),
+          -Math.PI / 2
         );
 
-        sphereRef.current.quaternion.multiplyQuaternions(
-          deltaRotationQuaternion,
-          sphereRef.current.quaternion
-        );
-
-        // sphereRef.current.rotation.y += deltaX * rotationSpeed;
-        // sphereRef.current.rotation.x += deltaY * rotationSpeed;
+        // Reset rotation around the Z-axis to 0 to prevent tilting out of the YZ plane
+        sphereRef.current.rotation.z = 0;
       }
 
       lastMousePosition.current = {
@@ -228,6 +319,37 @@ const ThreeScene = () => {
     isDragging.current = false;
   }
 
+  function setCameraFOV(newFOV) {
+    // Assuming 'camera' is your Three.js perspective camera
+    cameraRef.current.fov = newFOV;
+
+    // Update the camera projection matrix after changing the FOV
+    cameraRef.current.updateProjectionMatrix();
+  }
+
+  function zoomCameraFOV(deltaZoom) {
+    // Assuming 'camera' is your Three.js perspective camera
+    // Adjust the zoom speed as needed
+    const zoomSpeed = 0.1;
+
+    // Change the FOV based on the zoom delta
+    cameraRef.current.fov += deltaZoom * zoomSpeed;
+
+    // Optional: Clamp the FOV to prevent extreme zoom in or out
+    cameraRef.current.fov = Math.max(
+      minFov,
+      Math.min(cameraRef.current.fov, maxFov)
+    );
+
+    // Update the camera projection matrix after changing the FOV
+    cameraRef.current.updateProjectionMatrix();
+  }
+
+  function onMouseWheel(event) {
+    // Use event.deltaY to determine the direction and magnitude of the scroll
+    zoomCameraFOV(event.deltaY * 0.01);
+  }
+
   function onWindowResize() {
     if (cameraRef.current && rendererRef.current) {
       cameraRef.current.aspect = window.innerWidth / window.innerHeight;
@@ -266,6 +388,31 @@ const ThreeScene = () => {
       currentCountryOutline.current = countryOutline; // Update the reference to the new outline
     }
   }
+  function createStarfield() {
+    const starsGeometry = new THREE.BufferGeometry();
+    const starsMaterial = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 0.1,
+    });
+
+    const starVertices = [];
+    for (let i = 0; i < 1000; i++) {
+      const x = THREE.MathUtils.randFloatSpread(200);
+      const y = THREE.MathUtils.randFloatSpread(200);
+      const z = THREE.MathUtils.randFloatSpread(200);
+      starVertices.push(x, y, z);
+    }
+
+    starsGeometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(starVertices, 3)
+    );
+    const starField = new THREE.Points(starsGeometry, starsMaterial);
+
+    sceneRef.current.add(starField);
+  }
+
+  // Call this function in your useEffect after setting up the scene
 
   useEffect(() => {
     // Ensure that geojsonData is not null
@@ -291,7 +438,8 @@ const ThreeScene = () => {
     // Set up scene, camera, and renderer
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x808080);
+    // scene.background = new THREE.Color(0x808080);
+
     cameraRef.current = new THREE.PerspectiveCamera(
       75,
       window.innerWidth / window.innerHeight,
@@ -305,24 +453,31 @@ const ThreeScene = () => {
 
     // console.log(geoJSONData);
     // Add a cube
-    const sphereMaterial = new THREE.MeshBasicMaterial({
-      // map: new THREE.TextureLoader().load("/earthmap.jpeg"),
-      // map: new THREE.TextureLoader().load("/earthnight.jpeg"),
-      map: new THREE.TextureLoader().load(
-        "/earthmap.jpeg",
-        (texture) => {
-          // Texture loaded
-          sphere.material.map = texture;
-          sphere.material.needsUpdate = true;
-        },
-        undefined,
-        (error) => {
-          console.error("Error loading texture:", error);
-        }
-      ),
-      transparent: false,
-      // opacity: 0.3,
+    const sphereMaterial = new THREE.MeshPhongMaterial({
+      map: new THREE.TextureLoader().load("/8k_earth.jpeg"),
+      specular: 0x222222,
+      shininess: 50,
+      emissive: new THREE.Color(0x111111),
     });
+
+    // const sphereMaterial = new THREE.MeshBasicMaterial({
+    //   // map: new THREE.TextureLoader().load("/earthmap.jpeg"),
+    //   // map: new THREE.TextureLoader().load("/earthnight.jpeg"),
+    //   map: new THREE.TextureLoader().load(
+    //     "/8k_earth.jpeg",
+    //     (texture) => {
+    //       // Texture loaded
+    //       sphere.material.map = texture;
+    //       sphere.material.needsUpdate = true;
+    //     },
+    //     undefined,
+    //     (error) => {
+    //       console.error("Error loading texture:", error);
+    //     }
+    //   ),
+    //   transparent: false,
+    //   // opacity: 0.3,
+    // });
     const sphere = new THREE.Mesh(
       // new THREE.SphereGeometry(1, 50, 50),
       new THREE.SphereGeometry(1, 50, 50, phiStartOffset),
@@ -342,6 +497,7 @@ const ThreeScene = () => {
     document.addEventListener("mousemove", onMouseMove, false);
     document.addEventListener("mousedown", onMouseDown, false);
     document.addEventListener("mouseup", onMouseUp, false);
+    document.addEventListener("wheel", onMouseWheel, false);
 
     window.addEventListener("resize", onWindowResize, false);
 
@@ -352,6 +508,14 @@ const ThreeScene = () => {
     // scene.add(axesHelper);
 
     sceneRef.current = scene;
+    createStarfield();
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    // directionalLight.position.set(2, 2, 5);
+    scene.add(directionalLight);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // 0.5 is the light intensity
+    scene.add(ambientLight);
 
     // const gridHelper = new THREE.GridHelper(10, 10);
     // scene.add(gridHelper);
@@ -410,7 +574,7 @@ const ThreeScene = () => {
             // console.log(localPoint);
 
             const { lat, lon } = getLatLongFromPoint(localPoint);
-
+            console.log(lat, lon);
             const country = findCountry(lat, lon, geoJSONData);
             if (country) {
               // console.log(country);
