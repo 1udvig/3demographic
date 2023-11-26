@@ -13,10 +13,22 @@ import {
   NavigationMenuTrigger,
   NavigationMenuViewport,
 } from "@/components/ui/navigation-menu";
+import { Overlay } from "./overlay";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 const ThreeScene = () => {
+  const [selectedCountry, setselectedCountry] = useState(null);
+  const overlayopen = useRef(false);
   const mountRef = useRef(null);
   const sphereRef = useRef(null); // Ref for the sphere
+  const sunLightRef = useRef(null); // Ref for the sun light
   const rendererRef = useRef(null);
   const cameraRef = useRef(null);
   const isDragging = useRef(false);
@@ -28,12 +40,12 @@ const ThreeScene = () => {
   const currentCountryOutline = useRef(null);
   const currentCountry = useRef(null);
   const frameCounter = useRef(0);
-  const frameThreshold = 3; // Adjust this value based on your needs
+  const frameThreshold = 5; // Adjust this value based on your needs
   const sceneRef = useRef(null);
   const lastClickedPosition = useRef(null);
   const shouldSelect = useRef(null);
   const radius = 1;
-  const minFov = 35;
+  const minFov = 5;
   const maxFov = 80;
 
   const shouldCheckForCountry = () => {
@@ -44,21 +56,6 @@ const ThreeScene = () => {
     }
     return false;
   };
-
-  // Function to find the country
-  // optimized version below
-  // function findCountry(latitude, longitude, geojsonData) {
-  //   const point = turf.point([longitude, latitude]);
-
-  //   let countryFound = null;
-  //   geojsonData.features.forEach((feature) => {
-  //     if (turf.booleanPointInPolygon(point, feature)) {
-  //       countryFound = feature.properties.ADMIN;
-  //     }
-  //   });
-
-  //   return countryFound;
-  // }
 
   function findCountry(latitude, longitude, geojsonData) {
     const point = turf.point([longitude, latitude]);
@@ -85,7 +82,10 @@ const ThreeScene = () => {
           radius,
           phiStartOffset
         );
-        console.log("Local point on sphere: ", centroidVector);
+        console.log(
+          "Local point on sphere (should always be the same?): ",
+          centroidVector
+        );
         const worldCoordinates = sphereRef.current.localToWorld(centroidVector);
         console.log("World point in scene: ", worldCoordinates);
         const cameraForward = cameraRef.current.getWorldDirection(
@@ -93,86 +93,96 @@ const ThreeScene = () => {
         );
         cameraForward.negate();
 
-        // const smallSphereGeometry = new THREE.SphereGeometry(0.01, 32, 32); // Smaller sphere
-        // const smallSphereMaterial = new THREE.MeshBasicMaterial({
-        //   color: 0x00ff00,
-        // }); // Different color
-        // const smallSphere = new THREE.Mesh(
-        //   smallSphereGeometry,
-        //   smallSphereMaterial
-        // );
-
-        // Set the position of the small sphere
-        // smallSphere.position.set(
-        //   centroidVector.x,
-        //   centroidVector.y,
-        //   centroidVector.z
-        // );
-        // sphereRef.current.add(smallSphere);
-        // console.log(cameraForward);
         const axisOfRotation = new THREE.Vector3()
           .crossVectors(centroidVector, cameraForward)
           .normalize();
         const angle = Math.acos(
           centroidVector.dot(cameraForward) / centroidVector.length()
         );
-        // console.log(axisOfRotation);
-        // console.log(angle);
-        animateRotation(axisOfRotation, angle);
+        console.log(angle);
+
+        applyRotation(axisOfRotation, angle);
+        // animateRotation(axisOfRotation, angle);
       }
     }
   }
 
-  // function animateRotation(axis, angle) {
-  //   // Create a quaternion based on the axis and angle
-  //   const quaternion = new THREE.Quaternion();
-  //   quaternion.setFromAxisAngle(axis, angle);
+  function animateRotation(axis, angle, duration = 1000) {
+    const startQuaternion = sphereRef.current.quaternion.clone();
+    const rotationQuaternion = new THREE.Quaternion().setFromAxisAngle(
+      axis,
+      angle
+    );
 
-  //   // Apply the quaternion to the globe's rotation
-  //   sphereRef.current.quaternion.multiplyQuaternions(
-  //     quaternion,
-  //     sphereRef.current.quaternion
-  //   );
+    // Correctly compute the end quaternion by multiplying in the same order as applyRotation
+    const endQuaternion = sphereRef.current.quaternion
+      .clone()
+      .multiply(rotationQuaternion);
 
-  //   // Normalize the quaternion to ensure the rotation is valid
-  //   sphereRef.current.quaternion.normalize();
+    const startTime = Date.now();
 
-  //   // Update the globe's matrix to apply the rotation
-  //   sphereRef.current.updateMatrix();
-  // }
-  function animateRotation(axis, angle) {
-    if (sphereRef.current) {
-      // Create a quaternion based on the axis and angle
-      const quaternion = new THREE.Quaternion();
-      quaternion.setFromAxisAngle(axis, angle);
+    function animate() {
+      const elapsedTime = Date.now() - startTime;
+      const progress = Math.min(elapsedTime / duration, 1); // Ensure progress doesn't exceed 1
 
-      // Apply the quaternion to the globe's rotation
-      const newQuaternion = sphereRef.current.quaternion
-        .clone()
-        .multiply(quaternion);
-
-      // Convert quaternion to Euler to check and constrain rotations
-      const newEuler = new THREE.Euler().setFromQuaternion(
-        newQuaternion,
-        "XYZ"
-      );
-
-      // Constrain the X rotation to avoid flipping
-      newEuler.x = Math.max(Math.min(newEuler.x, Math.PI / 2), -Math.PI / 2);
-
-      // Reset Z rotation to 0 to keep the North Pole within the YZ plane
-      newEuler.z = 0;
-
-      // Update the sphere's quaternion
-      sphereRef.current.quaternion.setFromEuler(newEuler);
-
-      // Normalize the quaternion to ensure the rotation is valid
+      // Using slerp as an instance method
+      sphereRef.current.quaternion
+        .copy(startQuaternion)
+        .slerp(endQuaternion, progress);
       sphereRef.current.quaternion.normalize();
-
-      // Update the globe's matrix to apply the rotation
       sphereRef.current.updateMatrix();
-      setCameraFOV(35);
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
     }
+
+    animate();
+  }
+
+  function applyRotation(axis, angle) {
+    // Create a quaternion based on the axis and angle
+    const quaternion = new THREE.Quaternion();
+    quaternion.setFromAxisAngle(axis, angle);
+
+    // Apply the quaternion to the globe's rotation
+    sphereRef.current.quaternion.multiplyQuaternions(
+      quaternion,
+      sphereRef.current.quaternion
+    );
+
+    // Normalize the quaternion to ensure the rotation is valid
+    sphereRef.current.quaternion.normalize();
+
+    // realignYAxis();
+    // Update the globe's matrix to apply the rotation
+    sphereRef.current.updateMatrix();
+  }
+
+  function realignYAxis() {
+    // Extract the Y-axis vector
+    const yAxis = new THREE.Vector3(0, 1, 0);
+    sphereRef.current.localToWorld(yAxis);
+
+    // Project the Y-axis vector onto the YZ-plane
+    yAxis.x = 0;
+    yAxis.normalize();
+
+    // Calculate the quaternion needed to align the Y-axis with its projection
+    const currentYAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(
+      sphereRef.current.quaternion
+    );
+    const alignQuaternion = new THREE.Quaternion().setFromUnitVectors(
+      currentYAxis,
+      yAxis
+    );
+
+    // Apply this quaternion to the sphere's rotation
+    sphereRef.current.quaternion.multiplyQuaternions(
+      alignQuaternion,
+      sphereRef.current.quaternion
+    );
+    sphereRef.current.quaternion.normalize();
   }
 
   function onMouseDown(event) {
@@ -187,49 +197,6 @@ const ThreeScene = () => {
     };
   }
 
-  // function onMouseMove(event) {
-  //   // Update mouse for raycasting
-  //   // console.log(event.clientX);
-  //   // console.log(lastMousePosition.current.x);
-
-  //   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-  //   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-  //   // console.log("onMouseMove with isDragging: " + isDragging.current);
-
-  //   // Handle dragging
-  //   if (isDragging.current) {
-  //     const deltaX = event.clientX - lastMousePosition.current.x;
-  //     const deltaY = event.clientY - lastMousePosition.current.y;
-
-  //     // Adjust rotation speed as needed
-  //     const rotationSpeed = 0.0025;
-
-  //     // Update sphere rotation
-  //     if (sphereRef.current) {
-  //       const deltaRotationQuaternion = new THREE.Quaternion().setFromEuler(
-  //         new THREE.Euler(
-  //           deltaY * rotationSpeed,
-  //           deltaX * rotationSpeed,
-  //           0,
-  //           "XYZ" // Rotation order
-  //         )
-  //       );
-
-  //       sphereRef.current.quaternion.multiplyQuaternions(
-  //         deltaRotationQuaternion,
-  //         sphereRef.current.quaternion
-  //       );
-
-  //       // sphereRef.current.rotation.y += deltaX * rotationSpeed;
-  //       // sphereRef.current.rotation.x += deltaY * rotationSpeed;
-  //     }
-
-  //     lastMousePosition.current = {
-  //       x: event.clientX,
-  //       y: event.clientY,
-  //     };
-  //   }
-  // }
   function onMouseMove(event) {
     // Update mouse for raycasting
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -257,8 +224,10 @@ const ThreeScene = () => {
           -Math.PI / 2
         );
 
+        // sphereRef.current.rotation.x += deltaY * rotationSpeed;
+
         // Reset rotation around the Z-axis to 0 to prevent tilting out of the YZ plane
-        sphereRef.current.rotation.z = 0;
+        // sphereRef.current.rotation.z = 0;
       }
 
       lastMousePosition.current = {
@@ -267,6 +236,51 @@ const ThreeScene = () => {
       };
     }
   }
+
+  // function onMouseMove(event) {
+  //   // Update mouse for raycasting
+  //   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  //   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  //   if (isDragging.current) {
+  //     const deltaX = event.clientX - lastMousePosition.current.x;
+  //     const deltaY = event.clientY - lastMousePosition.current.y;
+
+  //     const rotationSpeed = 0.0025;
+
+  //     if (sphereRef.current) {
+  //       const deltaRotationQuaternionX =
+  //         new THREE.Quaternion().setFromAxisAngle(
+  //           new THREE.Vector3(1, 0, 0), // x-axis
+  //           deltaY * rotationSpeed
+  //         );
+
+  //       const deltaRotationQuaternionY =
+  //         new THREE.Quaternion().setFromAxisAngle(
+  //           new THREE.Vector3(0, 1, 0), // y-axis
+  //           deltaX * rotationSpeed
+  //         );
+
+  //       sphereRef.current.quaternion.multiplyQuaternions(
+  //         deltaRotationQuaternionX,
+  //         sphereRef.current.quaternion
+  //       );
+
+  //       sphereRef.current.quaternion.multiplyQuaternions(
+  //         deltaRotationQuaternionY,
+  //         sphereRef.current.quaternion
+  //       );
+
+  //       sphereRef.current.quaternion.normalize();
+  //       sphereRef.current.updateMatrix();
+  //     }
+
+  //     lastMousePosition.current = {
+  //       x: event.clientX,
+  //       y: event.clientY,
+  //     };
+  //   }
+  // }
 
   // function onMouseMove(event) {
   //   // Update mouse for raycasting
@@ -304,6 +318,7 @@ const ThreeScene = () => {
 
   function onMouseUp(event) {
     // console.log("onMouseUp");
+
     // console.log(lastMousePosition.current.x);
     if (
       lastClickedPosition.current.x != event.clientX ||
@@ -314,6 +329,21 @@ const ThreeScene = () => {
     } else {
       // console.log("mouse not moved after click, select country!");
       shouldSelect.current = true;
+    }
+    if (shouldSelect.current) {
+      if (currentCountry.current) {
+        if (overlayopen.current) {
+          setselectedCountry(null);
+        } else {
+          setselectedCountry(currentCountry.current);
+        }
+      }
+    }
+
+    if (overlayopen.current) {
+      overlayopen.current = false;
+    } else {
+      overlayopen.current = true;
     }
 
     isDragging.current = false;
@@ -412,6 +442,52 @@ const ThreeScene = () => {
     sceneRef.current.add(starField);
   }
 
+  function createSunLight() {
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1); // White light
+    sunLight.position.set(2.5, 2.5, 0); // Start position
+    sceneRef.current.add(sunLight);
+    sunLightRef.current = sunLight;
+  }
+  function applyHeightMapToSphere(sphereGeometry, heightMapUrl, maxHeight) {
+    new THREE.TextureLoader().load(heightMapUrl, (texture) => {
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      canvas.width = texture.image.width;
+      canvas.height = texture.image.height;
+      context.drawImage(texture.image, 0, 0);
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+
+      const positions = sphereGeometry.attributes.position;
+      const vertex = new THREE.Vector3();
+
+      // Loop over each vertex in the geometry
+      for (let i = 0; i < positions.count; i++) {
+        vertex.fromBufferAttribute(positions, i);
+
+        // Convert vertex position to latitude and longitude
+        const phi = Math.acos(vertex.y / sphereGeometry.parameters.radius);
+        const theta = Math.atan2(vertex.z, vertex.x) + Math.PI;
+
+        // Map to height map coordinates
+        const x = Math.floor((theta / (2 * Math.PI)) * canvas.width);
+        const y = Math.floor((1 - phi / Math.PI) * canvas.height);
+        const pixelIndex = (y * canvas.width + x) * 4;
+        const heightValue = imageData.data[pixelIndex] / 255;
+
+        // Adjust vertex position based on height map
+        const scaleFactor = 1 + heightValue * maxHeight;
+        vertex.multiplyScalar(scaleFactor);
+        positions.setXYZ(i, vertex.x, vertex.y, vertex.z);
+      }
+
+      // Update the geometry to reflect the new vertex positions
+      positions.needsUpdate = true;
+      sphereGeometry.computeVertexNormals(); // Update normals for correct lighting
+    });
+  }
+
+  // Call createSunLight() in your useEffect
+
   // Call this function in your useEffect after setting up the scene
 
   useEffect(() => {
@@ -459,37 +535,31 @@ const ThreeScene = () => {
       shininess: 50,
       emissive: new THREE.Color(0x111111),
     });
+    // const sphereMaterial = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
+    const sphereGeometry = new THREE.SphereGeometry(1, 50, 50, phiStartOffset);
 
-    // const sphereMaterial = new THREE.MeshBasicMaterial({
-    //   // map: new THREE.TextureLoader().load("/earthmap.jpeg"),
-    //   // map: new THREE.TextureLoader().load("/earthnight.jpeg"),
-    //   map: new THREE.TextureLoader().load(
-    //     "/8k_earth.jpeg",
-    //     (texture) => {
-    //       // Texture loaded
-    //       sphere.material.map = texture;
-    //       sphere.material.needsUpdate = true;
-    //     },
-    //     undefined,
-    //     (error) => {
-    //       console.error("Error loading texture:", error);
-    //     }
-    //   ),
-    //   transparent: false,
-    //   // opacity: 0.3,
-    // });
-    const sphere = new THREE.Mesh(
-      // new THREE.SphereGeometry(1, 50, 50),
-      new THREE.SphereGeometry(1, 50, 50, phiStartOffset),
-      sphereMaterial
-    );
-
-    // const ghostSphere = new THREE.Mesh(
+    // const sphere = new THREE.Mesh(
     //   // new THREE.SphereGeometry(1, 50, 50),
-    //   new THREE.SphereGeometry(1, 50, 50, phiStartOffset),
-    //   new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.1 })
+    //   sphereGeometry,
+    //   sphereMaterial
     // );
+    // let sphere;
+    // const textureLoader = new THREE.TextureLoader();
+    // textureLoader.load("/8k_earth.jpeg", function (texture) {
+    //   // Create a material with the Earth texture
+    // const material = new THREE.MeshPhongMaterial({ map: texture });
 
+    //   // Create the sphere mesh with the geometry and material
+    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+
+    //   // Add the sphere to the scene
+    //   scene.add(sphere);
+    // });
+
+    // applyHeightMapToSphere(sphereGeometry, "/heightmap.png", 0.1);
+    // sphereGeometry.computeVertexNormals();
+
+    scene.add(sphere);
     sphereRef.current = sphere;
 
     const raycaster = new THREE.Raycaster();
@@ -501,7 +571,6 @@ const ThreeScene = () => {
 
     window.addEventListener("resize", onWindowResize, false);
 
-    scene.add(sphere);
     // scene.add(ghostSphere);
 
     // const axesHelper = new THREE.AxesHelper(2); // The parameter 5 defines the size of the axes
@@ -509,12 +578,13 @@ const ThreeScene = () => {
 
     sceneRef.current = scene;
     createStarfield();
+    createSunLight();
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    // directionalLight.position.set(2, 2, 5);
-    scene.add(directionalLight);
+    // const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    // // directionalLight.position.set(2, 2, 5);
+    // scene.add(directionalLight);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // 0.5 is the light intensity
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); // 0.5 is the light intensity
     scene.add(ambientLight);
 
     // const gridHelper = new THREE.GridHelper(10, 10);
@@ -544,6 +614,12 @@ const ThreeScene = () => {
     // Animation loop
     const animate = function () {
       requestAnimationFrame(animate);
+
+      if (sunLightRef.current) {
+        sunLightRef.current.position.x = Math.cos(Date.now() * 0.0001) * 5;
+        sunLightRef.current.position.z = Math.sin(Date.now() * 0.0001) * 5;
+      }
+
       // if (
       //   lastCalculatedMousePosition.current.x !== mouse.x ||
       //   lastCalculatedMousePosition.current.y !== mouse.y
@@ -574,7 +650,7 @@ const ThreeScene = () => {
             // console.log(localPoint);
 
             const { lat, lon } = getLatLongFromPoint(localPoint);
-            console.log(lat, lon);
+            // console.log(lat, lon);
             const country = findCountry(lat, lon, geoJSONData);
             if (country) {
               // console.log(country);
@@ -594,6 +670,7 @@ const ThreeScene = () => {
             // console.log(country);
           } else {
             sphereRef.current.remove(currentCountryOutline.current);
+            // setselectedCountry(null);
           }
 
           // if(country == "Sweden"){
@@ -644,35 +721,22 @@ const ThreeScene = () => {
     };
   }, [geoJSONData]); // Add textureLoaded as a dependency
 
-  const Overlay = () => (
-    <div
-      // style={{
-      //   position: "absolute",
-      //   top: "10%",
-      //   left: "10%",
-      //   // backgroundColor: "white",
-      //   // padding: "10px",
-      //   borderRadius: "5px",
-      //   // display: showOverlay ? "block" : "none",
-      // }}
-      className=" absolute top-10 left-10"
-    >
-      <NavigationMenu>
-        <NavigationMenuList>
-          <NavigationMenuItem>
-            <NavigationMenuTrigger>Item One</NavigationMenuTrigger>
-            <NavigationMenuContent className="p-5">
-              <NavigationMenuLink>Link</NavigationMenuLink>
-            </NavigationMenuContent>
-          </NavigationMenuItem>
-        </NavigationMenuList>
-      </NavigationMenu>
-    </div>
-  );
-
   return (
     <div ref={mountRef}>
-      <Overlay />
+      {selectedCountry && <Overlay country={selectedCountry} />}
+      <Sheet open={selectedCountry ? true : false}>
+        {/* <Sheet> */}
+        {/* <SheetTrigger>Open</SheetTrigger> */}
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Are you sure absolutely sure?</SheetTitle>
+            <SheetDescription>
+              This action cannot be undone. This will permanently delete your
+              account and remove your data from our servers.
+            </SheetDescription>
+          </SheetHeader>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };

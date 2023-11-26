@@ -95,7 +95,7 @@ export function createCountryOutline(geojsonData, countryName, radius) {
         // console.log(points);
         const geometry = new THREE.BufferGeometry().setFromPoints(points);
         const linetoPush = new THREE.Line(geometry, material);
-        linetoPush.raycastable = false;
+        // linetoPush.raycastable = false;
         lines.push(linetoPush);
       }
     }
@@ -126,3 +126,61 @@ export function createCountryOutline(geojsonData, countryName, radius) {
 
   return group;
 }
+
+// export function createCountryOutline(geojsonData, countryName, radius) {
+//   const countryFeature = geojsonData.features.find(
+//     (feature) => feature.properties.ADMIN === countryName
+//   );
+
+//   if (
+//     !countryFeature ||
+//     !countryFeature.geometry ||
+//     !countryFeature.geometry.coordinates
+//   ) {
+//     return null;
+//   }
+
+//   const material = new THREE.LineBasicMaterial({
+//     color: 0xff0000,
+//     depthTest: false,
+//     depthWrite: false,
+//     linewidth: 2, // Note: linewidth might still not be effective
+//   });
+
+//   const group = new THREE.Group();
+
+//   const processCoordinates = (coordinates) => {
+//     for (let i = 0; i < coordinates.length; i++) {
+//       const polygon = coordinates[i];
+//       if (
+//         !Array.isArray(polygon) ||
+//         polygon.some((coord) => !Array.isArray(coord))
+//       ) {
+//         console.error("Invalid polygon coordinates", polygon);
+//         continue;
+//       }
+
+//       const curvePoints = polygon.map(([lon, lat]) => {
+//         const point = getPointFromLatLong(lat, lon, radius, -Math.PI / 2);
+//         return new THREE.Vector3(point.x, point.y, point.z);
+//       });
+
+//       const curve = new THREE.CatmullRomCurve3(curvePoints);
+//       const smoothPoints = curve.getPoints(50); // You can adjust the number of points for smoothness
+//       const geometry = new THREE.BufferGeometry().setFromPoints(smoothPoints);
+
+//       const line = new THREE.Line(geometry, material);
+//       group.add(line);
+//     }
+//   };
+
+//   if (countryFeature.geometry.type === "MultiPolygon") {
+//     countryFeature.geometry.coordinates.forEach((polygons) => {
+//       processCoordinates(polygons);
+//     });
+//   } else if (countryFeature.geometry.type === "Polygon") {
+//     processCoordinates(countryFeature.geometry.coordinates);
+//   }
+
+//   return group;
+// }
