@@ -22,9 +22,12 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { ConstantColorFactor } from "three";
+import CountryData from "@/components/ui/CountryData";
 
 const ThreeScene = () => {
   const [selectedCountry, setselectedCountry] = useState(null);
+  const [countryData, setcountryData] = useState(null);
   const overlayopen = useRef(false);
   const mountRef = useRef(null);
   const sphereRef = useRef(null); // Ref for the sphere
@@ -39,6 +42,10 @@ const ThreeScene = () => {
   const phiStartOffset = -Math.PI / 2;
   const currentCountryOutline = useRef(null);
   const currentCountry = useRef(null);
+  const hoveredCountry = useRef(null);
+  const mouseMoved = useRef(null);
+  const mouseAtOverlay = useRef(false);
+
   const frameCounter = useRef(0);
   const frameThreshold = 5; // Adjust this value based on your needs
   const sceneRef = useRef(null);
@@ -195,9 +202,11 @@ const ThreeScene = () => {
       x: event.clientX,
       y: event.clientY,
     };
+    mouseMoved.current = false;
   }
 
   function onMouseMove(event) {
+    mouseMoved.current = true;
     // Update mouse for raycasting
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -318,32 +327,16 @@ const ThreeScene = () => {
 
   function onMouseUp(event) {
     // console.log("onMouseUp");
-
+    // console.log(mouseAtOverlay.current);
     // console.log(lastMousePosition.current.x);
-    if (
-      lastClickedPosition.current.x != event.clientX ||
-      lastClickedPosition.current.y != event.clientY
-    ) {
-      // console.log("moused moved efter click, should not select country");
+    if (mouseMoved.current) {
+      // console.log("mousemoved after clicked");
       shouldSelect.current = false;
     } else {
-      // console.log("mouse not moved after click, select country!");
-      shouldSelect.current = true;
-    }
-    if (shouldSelect.current) {
-      if (currentCountry.current) {
-        if (overlayopen.current) {
-          setselectedCountry(null);
-        } else {
-          setselectedCountry(currentCountry.current);
-        }
-      }
-    }
+      console.log(mouseAtOverlay.current);
+      console.log(hoveredCountry.current);
 
-    if (overlayopen.current) {
-      overlayopen.current = false;
-    } else {
-      overlayopen.current = true;
+      setselectedCountry(hoveredCountry.current);
     }
 
     isDragging.current = false;
@@ -652,8 +645,10 @@ const ThreeScene = () => {
             const { lat, lon } = getLatLongFromPoint(localPoint);
             // console.log(lat, lon);
             const country = findCountry(lat, lon, geoJSONData);
+            hoveredCountry.current = country;
             if (country) {
               // console.log(country);
+              // console.log(shouldSelect.current);
               if (shouldSelect.current) {
                 // console.log("clicked on: " + country);
                 centerCountry(country, geoJSONData);
@@ -670,6 +665,7 @@ const ThreeScene = () => {
             // console.log(country);
           } else {
             sphereRef.current.remove(currentCountryOutline.current);
+            hoveredCountry.current = null;
             // setselectedCountry(null);
           }
 
@@ -724,15 +720,24 @@ const ThreeScene = () => {
   return (
     <div ref={mountRef}>
       {selectedCountry && <Overlay country={selectedCountry} />}
+
       <Sheet open={selectedCountry ? true : false}>
-        {/* <Sheet> */}
-        {/* <SheetTrigger>Open</SheetTrigger> */}
-        <SheetContent>
+        {/* <Sheet>
+        <SheetTrigger>Open</SheetTrigger> */}
+        <SheetContent
+          onMouseEnter={() => {
+            mouseAtOverlay.current = true;
+          }}
+          onMouseLeave={() => {
+            mouseAtOverlay.current = false;
+          }}
+        >
           <SheetHeader>
-            <SheetTitle>Are you sure absolutely sure?</SheetTitle>
-            <SheetDescription>
-              This action cannot be undone. This will permanently delete your
-              account and remove your data from our servers.
+            <SheetTitle>{selectedCountry}</SheetTitle>
+            <SheetDescription asChild>
+              {selectedCountry && (
+                <CountryData country={selectedCountry}></CountryData>
+              )}
             </SheetDescription>
           </SheetHeader>
         </SheetContent>

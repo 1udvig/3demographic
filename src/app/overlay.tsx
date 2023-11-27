@@ -9,7 +9,8 @@ export const Overlay = ({ country }) => (
     //   borderRadius: "5px",
     //   // display: showOverlay ? "block" : "none",
     // }}
-    className=" absolute top-10 left-10 bg-slate-200  p-6"
+    className=" absolute top-10 left-10 bg-slate-300  p-6 z-50"
+    onMouseEnter={() => console.log("entered the overlay")}
   >
     {/* <NavigationMenu>
         <NavigationMenuList>
