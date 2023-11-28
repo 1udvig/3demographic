@@ -4,11 +4,11 @@ import getCountryISO2 from "country-iso-3-to-2";
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const countryISO_3 = searchParams.get("countryISO");
-  console.log(countryISO_3);
+  // console.log(countryISO_3);
   const countryISO_2 = getCountryISO2(countryISO_3);
+  // console.log(countryISO_2);
+  // return NextResponse.json({ data: countryISO_3 });
 
-  console.log(countryISO_2);
-  console.log("api key", process.env.NEWSAPI_KEY);
   try {
     // Using await to wait for the fetch request to complete
     const fetchResponse = await fetch(
@@ -30,11 +30,15 @@ export async function GET(request: NextRequest) {
     const data = await fetchResponse.json();
 
     // Storing the data in the 'response' variable
-    let response = data;
+    let response = data.articles.map((article) => ({
+      title: article.title,
+      url: article.url,
+      publishedAt: article.publishedAt,
+    }));
 
-    // You can now use the 'response' variable as needed
-    console.log(response);
-    return NextResponse.json({ data: data });
+    // console.log(data);
+
+    return NextResponse.json({ data: response });
   } catch (error) {
     // Handling any errors that occur during the fetch
     console.error("Error fetching data:", error);

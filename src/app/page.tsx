@@ -30,8 +30,8 @@ const ThreeScene = () => {
   const [countryData, setcountryData] = useState(null);
   const overlayopen = useRef(false);
   const mountRef = useRef(null);
-  const sphereRef = useRef(null); // Ref for the sphere
-  const sunLightRef = useRef(null); // Ref for the sun light
+  const sphereRef = useRef(null);
+  const sunLightRef = useRef(null);
   const rendererRef = useRef(null);
   const cameraRef = useRef(null);
   const isDragging = useRef(false);
@@ -43,11 +43,12 @@ const ThreeScene = () => {
   const currentCountryOutline = useRef(null);
   const currentCountry = useRef(null);
   const hoveredCountry = useRef(null);
+  const hoveredCountryISO_A3 = useRef(null);
   const mouseMoved = useRef(null);
   const mouseAtOverlay = useRef(false);
 
   const frameCounter = useRef(0);
-  const frameThreshold = 5; // Adjust this value based on your needs
+  const frameThreshold = 5;
   const sceneRef = useRef(null);
   const lastClickedPosition = useRef(null);
   const shouldSelect = useRef(null);
@@ -69,11 +70,14 @@ const ThreeScene = () => {
 
     for (const feature of geojsonData.features) {
       if (turf.booleanPointInPolygon(point, feature)) {
-        return feature.properties.ADMIN; // Return immediately when the country is found
+        return {
+          country: feature.properties.ADMIN,
+          ISO_A3: feature.properties.ISO_A3,
+        };
       }
     }
 
-    return null; // Return null if no country is found
+    return null;
   }
 
   function centerCountry(country, geoJSONData) {
@@ -224,8 +228,6 @@ const ThreeScene = () => {
         // Rotate only around the Y-axis for horizontal mouse movement
         sphereRef.current.rotation.y += deltaX * rotationSpeed;
 
-        // Carefully manage rotation around the X-axis
-        // You can implement limits here to prevent the North Pole from tilting too much
         const newRotationX =
           sphereRef.current.rotation.x + deltaY * rotationSpeed;
         sphereRef.current.rotation.x = Math.max(
@@ -327,6 +329,7 @@ const ThreeScene = () => {
 
   function onMouseUp(event) {
     // console.log("onMouseUp");
+    console.log(event);
     // console.log(mouseAtOverlay.current);
     // console.log(lastMousePosition.current.x);
     if (mouseMoved.current) {
@@ -631,26 +634,20 @@ const ThreeScene = () => {
           });
 
           if (intersects.length > 0) {
-            // const distanceToIntersection = intersects[0].distance;
-            // const distanceToSphere = cameraRef.current.position.distanceTo(
-            //   sphere.position
-            // );
             const point = intersects[0].point;
 
-            // console.log(point);
-
             const localPoint = sphere.worldToLocal(point.clone());
-            // console.log(localPoint);
 
             const { lat, lon } = getLatLongFromPoint(localPoint);
-            // console.log(lat, lon);
-            const country = findCountry(lat, lon, geoJSONData);
+
+            const { country, ISO_A3 } =
+              findCountry(lat, lon, geoJSONData) ?? {};
+
             hoveredCountry.current = country;
+            hoveredCountryISO_A3.current = ISO_A3;
+            console.log(ISO_A3);
             if (country) {
-              // console.log(country);
-              // console.log(shouldSelect.current);
               if (shouldSelect.current) {
-                // console.log("clicked on: " + country);
                 centerCountry(country, geoJSONData);
                 shouldSelect.current = false;
               }
@@ -662,29 +659,11 @@ const ThreeScene = () => {
             } else {
               sphereRef.current.remove(currentCountryOutline.current);
             }
-            // console.log(country);
           } else {
             sphereRef.current.remove(currentCountryOutline.current);
             hoveredCountry.current = null;
-            // setselectedCountry(null);
+            hoveredCountryISO_A3.current = null;
           }
-
-          // if(country == "Sweden"){
-          //   if (highLightedCountry.current != "Sweden") {
-          //     if (geoJSONData) {
-          //       const countryOutline = createCountryOutline(
-          //         geoJSONData,
-          //         "Sweden",
-          //         1.0
-          //       );
-          //       // console.log(countryOutline);
-          //       if (countryOutline) {
-          //         sphere.add(countryOutline);
-          //         highLightedCountry.current = 'Sweden';
-          //       }
-          //     }
-          //   }
-          // }
         }
 
         lastCalculatedMousePosition.current = {
@@ -699,14 +678,10 @@ const ThreeScene = () => {
       }
 
       rendererRef.current.render(scene, cameraRef.current);
-      // } else if (isDragging) {
-      //   rendererRef.current.render(scene, cameraRef.current);
-      // }
     };
 
     animate();
 
-    // Clean up
     return () => {
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mousedown", onMouseDown);
@@ -715,7 +690,7 @@ const ThreeScene = () => {
 
       mountRef.current.removeChild(rendererRef.current.domElement);
     };
-  }, [geoJSONData]); // Add textureLoaded as a dependency
+  }, [geoJSONData]);
 
   return (
     <div ref={mountRef}>
@@ -736,7 +711,10 @@ const ThreeScene = () => {
             <SheetTitle>{selectedCountry}</SheetTitle>
             <SheetDescription asChild>
               {selectedCountry && (
-                <CountryData country={selectedCountry}></CountryData>
+                <CountryData
+                  country={selectedCountry}
+                  ISO_A3={hoveredCountryISO_A3.current}
+                ></CountryData>
               )}
             </SheetDescription>
           </SheetHeader>

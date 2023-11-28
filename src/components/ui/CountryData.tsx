@@ -1,28 +1,44 @@
 import React, { useEffect, useState } from "react";
 
-const CountryData = ({ country }) => {
+const CountryData = ({ country, ISO_A3 }) => {
   const [fetchedData, setFetchedData] = useState(null);
-
-  let countrytemp = "BRA";
+  console.log(country, ISO_A3);
   useEffect(() => {
     if (country) {
-      fetch(`/country/api?countryISO=${countrytemp}`, {
+      fetch(`/country/api?countryISO=${ISO_A3}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
         },
       })
         .then((response) => response.json())
-        .then((data) => setFetchedData(data))
+        .then((data) => {
+          setFetchedData(data.data);
+          console.log(data);
+        })
         .catch((error) => console.error("Error fetching data:", error));
     }
-  }, [country]);
+  }, [country, ISO_A3]);
 
   return (
     <div>
       {fetchedData ? (
-        <div>{JSON.stringify(fetchedData)}</div>
+        fetchedData.map((article, index) => (
+          <div key={index}>
+            <h1>{article.title}</h1>
+            <h2>{article.publishedAt}</h2>
+            <a
+              href={article.url}
+              target="_blank"
+              onClick={(e) => e.stopPropagation()}
+              className="z-100"
+            >
+              {article.url}
+            </a>
+          </div>
+        ))
       ) : (
+        // <div>placeholder</div>
         <div>Loading...</div>
       )}
     </div>
